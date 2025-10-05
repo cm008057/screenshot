@@ -70,7 +70,20 @@ def setup_driver(headless=True):
         options.add_argument('--disable-backgrounding-occluded-windows')
         options.add_argument('--disable-renderer-backgrounding')
 
-    driver = webdriver.Chrome(options=options)
+    # Render環境対応
+    chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/local/bin/chromedriver')
+    chrome_bin_path = os.environ.get('CHROME_BIN', None)
+
+    if chrome_bin_path:
+        options.binary_location = chrome_bin_path
+
+    # ChromeDriverのパスを指定（存在する場合）
+    if os.path.exists(chromedriver_path):
+        from selenium.webdriver.chrome.service import Service
+        service = Service(executable_path=chromedriver_path)
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        driver = webdriver.Chrome(options=options)
 
     # JavaScript実行でさらにボット検出を回避
     stealth_js = """
