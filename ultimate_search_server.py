@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+import undetected_chromedriver as uc
+from fake_useragent import UserAgent
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -18,119 +20,138 @@ app = Flask(__name__)
 CORS(app)
 
 def setup_driver(headless=True):
-    """最適化されたブラウザ設定 - ボット検出回避強化版"""
-    options = Options()
+    """最強のボット検出回避 - undetected-chromedriver使用"""
+
+    # ランダムなUser-Agent生成
+    ua = UserAgent()
+    user_agent = ua.random
+
+    print(f"🔐 User-Agent: {user_agent[:50]}...")
 
     if headless:
-        options.add_argument('--headless=new')  # 新しいheadlessモード
-        options.add_argument('--disable-gpu')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
         print("🔇 ヘッドレスモードで実行中（画面に表示されません）")
     else:
         print("🖥️ ブラウザ表示モードで実行中")
 
-    # ウィンドウサイズを一般的な解像度に
+    # undetected-chromedriverのオプション設定
+    options = uc.ChromeOptions()
+
+    # ヘッドレスモード（新方式）
+    if headless:
+        options.add_argument('--headless=new')
+
+    # 基本設定
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
-    options.add_argument('--start-maximized')
 
-    # 自動化検出の無効化
-    options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
-    options.add_experimental_option('useAutomationExtension', False)
-
-    # リアルなUser-Agent（定期的に更新推奨）
-    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-
-    # 自動化フラグの削除
+    # ボット検出回避の追加設定
     options.add_argument('--disable-blink-features=AutomationControlled')
-
-    # 言語とロケール設定
-    options.add_argument('--lang=ja-JP')
-    options.add_argument('--accept-lang=ja-JP,ja;q=0.9')
-
-    # その他のボット対策
     options.add_argument('--disable-infobars')
     options.add_argument('--disable-notifications')
+    options.add_argument(f'--user-agent={user_agent}')
+    options.add_argument('--lang=ja-JP')
 
-    # プライバシー設定（通常ブラウザに近づける）
+    # プライバシー設定
     prefs = {
         'profile.default_content_setting_values.notifications': 2,
         'credentials_enable_service': False,
         'profile.password_manager_enabled': False,
-        'profile.default_content_settings.popups': 0,
-        'download.prompt_for_download': False,
-        'plugins.always_open_pdf_externally': True
+        'profile.managed_default_content_settings.images': 1,  # 画像を有効化（サジェスト表示のため）
     }
     options.add_experimental_option('prefs', prefs)
 
-    # バックグラウンド実行のための追加設定
-    if headless:
-        options.add_argument('--disable-extensions')
-        options.add_argument('--disable-background-timer-throttling')
-        options.add_argument('--disable-backgrounding-occluded-windows')
-        options.add_argument('--disable-renderer-backgrounding')
+    # メモリ削減（オプション）
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-plugins')
 
-    # メモリ使用量削減のための設定
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-software-rasterizer')
-    options.add_argument('--disable-features=IsolateOrigins,site-per-process')
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument('--single-process')  # 単一プロセスモード
-    options.add_argument('--disable-setuid-sandbox')
-    options.add_argument('--disable-accelerated-2d-canvas')
-    options.add_argument('--disable-accelerated-jpeg-decoding')
-    options.add_argument('--disable-accelerated-mjpeg-decode')
-    options.add_argument('--disable-accelerated-video-decode')
-    options.add_argument('--no-zygote')
-    options.add_argument('--disable-gpu-sandbox')
+    try:
+        # undetected-chromedriverで起動（自動的にボット検出を回避）
+        driver = uc.Chrome(
+            options=options,
+            version_main=None,  # 自動検出
+            use_subprocess=True,
+            headless=headless
+        )
 
-    # Render環境対応
-    chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/local/bin/chromedriver')
-    chrome_bin_path = os.environ.get('CHROME_BIN', None)
+        # 追加のステルススクリプト
+        stealth_js = """
+            // さらなるステルス化
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
 
-    if chrome_bin_path:
-        options.binary_location = chrome_bin_path
+            // Chrome runtime偽装
+            window.navigator.chrome = {
+                runtime: {},
+                loadTimes: function() {},
+                csi: function() {},
+                app: {}
+            };
 
-    # ChromeDriverのパスを指定（存在する場合）
-    if os.path.exists(chromedriver_path):
-        from selenium.webdriver.chrome.service import Service
-        service = Service(executable_path=chromedriver_path)
-        driver = webdriver.Chrome(service=service, options=options)
-    else:
-        driver = webdriver.Chrome(options=options)
+            // Plugin偽装
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [
+                    {
+                        0: {type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format", enabledPlugin: Plugin},
+                        description: "Portable Document Format",
+                        filename: "internal-pdf-viewer",
+                        length: 1,
+                        name: "Chrome PDF Plugin"
+                    },
+                    {
+                        0: {type: "application/pdf", suffixes: "pdf", description: "", enabledPlugin: Plugin},
+                        description: "",
+                        filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai",
+                        length: 1,
+                        name: "Chrome PDF Viewer"
+                    }
+                ],
+            });
 
-    # JavaScript実行でさらにボット検出を回避
-    stealth_js = """
-        // navigator.webdriverを完全に削除
-        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            // Languages偽装
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['ja-JP', 'ja', 'en-US', 'en'],
+            });
 
-        // Chrome検出を回避
-        window.navigator.chrome = {
-            runtime: {},
-        };
+            // Permissions API偽装
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                    Promise.resolve({state: Notification.permission}) :
+                    originalQuery(parameters)
+            );
 
-        // Permissions APIの偽装
-        const originalQuery = window.navigator.permissions.query;
-        window.navigator.permissions.query = (parameters) => (
-            parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-        );
+            // Canvas Fingerprint対策
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                if (parameter === 37445) {
+                    return 'Intel Inc.';
+                }
+                if (parameter === 37446) {
+                    return 'Intel Iris OpenGL Engine';
+                }
+                return getParameter.apply(this, arguments);
+            };
+        """
 
-        // Plugin配列の偽装
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => [1, 2, 3, 4, 5],
-        });
+        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': stealth_js})
 
-        // Languages配列の偽装
-        Object.defineProperty(navigator, 'languages', {
-            get: () => ['ja-JP', 'ja', 'en-US', 'en'],
-        });
-    """
+        print("✅ ボット検出回避ドライバー起動完了")
+        return driver
 
-    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': stealth_js})
+    except Exception as e:
+        print(f"⚠️ undetected-chromedriver起動失敗: {e}")
+        print("⚠️ 通常のChromeDriverで起動します...")
 
-    return driver
+        # フォールバック: 通常のSelenium
+        from selenium.webdriver.chrome.options import Options as StandardOptions
+        fallback_options = StandardOptions()
+        fallback_options.add_argument('--headless=new' if headless else '--start-maximized')
+        fallback_options.add_argument('--no-sandbox')
+        fallback_options.add_argument('--disable-dev-shm-usage')
+        fallback_options.add_argument(f'--user-agent={user_agent}')
+
+        return webdriver.Chrome(options=fallback_options)
 
 def prepare_company_variations(company_name, selected_patterns=None):
     """株式会社パターン準備（選択されたもののみ）"""
@@ -498,14 +519,18 @@ def ultimate_search():
                             driver, engine, variation, engine_folder, search_options
                         )
                         engine_results.append(result)
-                        
-                        # 少し待機
-                        time.sleep(random.uniform(3, 6))
+
+                        # 人間らしいランダムな待機（3〜8秒）
+                        wait_time = random.uniform(3, 8)
+                        print(f"  ⏳ {wait_time:.1f}秒待機中...")
+                        time.sleep(wait_time)
                     
                     company_results[engine] = engine_results
-                    
-                    # エンジン間での待機
-                    time.sleep(random.uniform(8, 12))
+
+                    # エンジン間での長めの待機（10〜20秒）
+                    engine_wait = random.uniform(10, 20)
+                    print(f"  💤 次の検索エンジンまで{engine_wait:.1f}秒待機...")
+                    time.sleep(engine_wait)
                 
                 all_results[company_name] = company_results
                 processed_companies += 1
