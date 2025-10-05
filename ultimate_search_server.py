@@ -18,37 +18,91 @@ app = Flask(__name__)
 CORS(app)
 
 def setup_driver(headless=True):
-    """最適化されたブラウザ設定"""
+    """最適化されたブラウザ設定 - ボット検出回避強化版"""
     options = Options()
-    
+
     if headless:
-        options.add_argument('--headless')
+        options.add_argument('--headless=new')  # 新しいheadlessモード
         options.add_argument('--disable-gpu')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         print("🔇 ヘッドレスモードで実行中（画面に表示されません）")
     else:
         print("🖥️ ブラウザ表示モードで実行中")
-    
+
+    # ウィンドウサイズを一般的な解像度に
     options.add_argument('--window-size=1920,1080')
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_argument('--start-maximized')
+
+    # 自動化検出の無効化
+    options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     options.add_experimental_option('useAutomationExtension', False)
-    options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+    # リアルなUser-Agent（定期的に更新推奨）
+    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+    # 自動化フラグの削除
     options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument('--disable-web-security')
+
+    # 言語とロケール設定
     options.add_argument('--lang=ja-JP')
-    
+    options.add_argument('--accept-lang=ja-JP,ja;q=0.9')
+
+    # その他のボット対策
+    options.add_argument('--disable-infobars')
+    options.add_argument('--disable-notifications')
+
+    # プライバシー設定（通常ブラウザに近づける）
+    prefs = {
+        'profile.default_content_setting_values.notifications': 2,
+        'credentials_enable_service': False,
+        'profile.password_manager_enabled': False,
+        'profile.default_content_settings.popups': 0,
+        'download.prompt_for_download': False,
+        'plugins.always_open_pdf_externally': True
+    }
+    options.add_experimental_option('prefs', prefs)
+
     # バックグラウンド実行のための追加設定
     if headless:
         options.add_argument('--disable-extensions')
-        options.add_argument('--disable-plugins')
-        # JavaScriptは有効のままにしてサジェスト機能を維持
         options.add_argument('--disable-background-timer-throttling')
         options.add_argument('--disable-backgrounding-occluded-windows')
         options.add_argument('--disable-renderer-backgrounding')
-    
+
     driver = webdriver.Chrome(options=options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+    # JavaScript実行でさらにボット検出を回避
+    stealth_js = """
+        // navigator.webdriverを完全に削除
+        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+
+        // Chrome検出を回避
+        window.navigator.chrome = {
+            runtime: {},
+        };
+
+        // Permissions APIの偽装
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+        );
+
+        // Plugin配列の偽装
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5],
+        });
+
+        // Languages配列の偽装
+        Object.defineProperty(navigator, 'languages', {
+            get: () => ['ja-JP', 'ja', 'en-US', 'en'],
+        });
+    """
+
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': stealth_js})
+
     return driver
 
 def prepare_company_variations(company_name, selected_patterns=None):
@@ -87,6 +141,44 @@ def get_search_box(driver, engine_name):
             return driver.find_element(By.ID, "sb_form_q")
         except:
             return driver.find_element(By.NAME, "q")
+
+def human_like_typing(element, text):
+    """人間らしいタイピング動作"""
+    for char in text:
+        element.send_keys(char)
+        # タイピング速度をランダムに変える
+        delay = random.uniform(0.05, 0.25)
+        # たまに長めの間隔（考えている風）
+        if random.random() < 0.1:
+            delay = random.uniform(0.3, 0.7)
+        time.sleep(delay)
+
+def human_like_mouse_move(driver, element):
+    """人間らしいマウス移動（スクロールとホバー）"""
+    try:
+        # 要素までスクロール
+        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element)
+        time.sleep(random.uniform(0.3, 0.7))
+
+        # マウスホバー風の動き
+        from selenium.webdriver.common.action_chains import ActionChains
+        actions = ActionChains(driver)
+        actions.move_to_element(element).perform()
+        time.sleep(random.uniform(0.2, 0.5))
+    except:
+        pass
+
+def random_page_interaction(driver):
+    """ランダムなページ操作（人間らしさ向上）"""
+    actions = [
+        lambda: driver.execute_script("window.scrollBy(0, {});".format(random.randint(50, 150))),
+        lambda: driver.execute_script("window.scrollBy(0, {});".format(random.randint(-100, -50))),
+        lambda: time.sleep(random.uniform(0.5, 1.5))
+    ]
+
+    # 20%の確率でランダム操作
+    if random.random() < 0.2:
+        random.choice(actions)()
 
 def detect_google_maps(driver):
     """Googleマップ表示を検出"""
@@ -142,13 +234,19 @@ def process_search_with_options(driver, engine_name, variation, base_path, optio
             time.sleep(2 + extra_delay)
             
             search_box = get_search_box(driver, engine_name)
+
+            # 人間らしいマウス移動
+            human_like_mouse_move(driver, search_box)
+
             search_box.click()
             search_box.clear()
-            
-            for char in variation['name']:
-                search_box.send_keys(char)
-                time.sleep(random.uniform(0.3, 0.6))
-            
+
+            # 人間らしいタイピング
+            human_like_typing(search_box, variation['name'])
+
+            # ランダムなページ操作
+            random_page_interaction(driver)
+
             time.sleep(random.uniform(2, 4))
             
             suggest_path = os.path.join(base_path, f'{engine_name}_suggest_{variation["type"]}.png')
@@ -182,13 +280,13 @@ def process_search_with_options(driver, engine_name, variation, base_path, optio
             time.sleep(2 + extra_delay)
             
             search_box = get_search_box(driver, engine_name)
+            human_like_mouse_move(driver, search_box)
             search_box.click()
             search_box.clear()
-            
+
             reputation_query = f'{variation["name"]} 評判'
-            for char in reputation_query:
-                search_box.send_keys(char)
-                time.sleep(random.uniform(0.3, 0.6))
+            human_like_typing(search_box, reputation_query)
+            random_page_interaction(driver)
             
             time.sleep(2)
             
@@ -212,13 +310,13 @@ def process_search_with_options(driver, engine_name, variation, base_path, optio
             time.sleep(2 + extra_delay)
             
             search_box = get_search_box(driver, engine_name)
+            human_like_mouse_move(driver, search_box)
             search_box.click()
             search_box.clear()
-            
+
             review_query = f'{variation["name"]} 口コミ'
-            for char in review_query:
-                search_box.send_keys(char)
-                time.sleep(random.uniform(0.3, 0.6))
+            human_like_typing(search_box, review_query)
+            random_page_interaction(driver)
             
             time.sleep(2)
             
