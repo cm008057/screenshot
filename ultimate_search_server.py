@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -461,6 +461,11 @@ def ultimate_search():
             'success': False,
             'error': str(e)
         })
+
+@app.route('/')
+def index():
+    """トップページ - HTMLを表示"""
+    return send_from_directory('.', 'ultimate_search.html')
 
 @app.route('/health', methods=['GET'])
 def health_check():
