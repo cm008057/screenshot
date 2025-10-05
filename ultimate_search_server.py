@@ -70,6 +70,20 @@ def setup_driver(headless=True):
         options.add_argument('--disable-backgrounding-occluded-windows')
         options.add_argument('--disable-renderer-backgrounding')
 
+    # メモリ使用量削減のための設定
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-software-rasterizer')
+    options.add_argument('--disable-features=IsolateOrigins,site-per-process')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--single-process')  # 単一プロセスモード
+    options.add_argument('--disable-setuid-sandbox')
+    options.add_argument('--disable-accelerated-2d-canvas')
+    options.add_argument('--disable-accelerated-jpeg-decoding')
+    options.add_argument('--disable-accelerated-mjpeg-decode')
+    options.add_argument('--disable-accelerated-video-decode')
+    options.add_argument('--no-zygote')
+    options.add_argument('--disable-gpu-sandbox')
+
     # Render環境対応
     chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/local/bin/chromedriver')
     chrome_bin_path = os.environ.get('CHROME_BIN', None)

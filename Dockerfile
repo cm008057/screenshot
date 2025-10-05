@@ -65,4 +65,12 @@ ENV PORT=10000
 EXPOSE 10000
 
 # アプリケーション起動
-CMD gunicorn ultimate_search_server:app --bind 0.0.0.0:$PORT --timeout 300
+CMD gunicorn ultimate_search_server:app \
+    --bind 0.0.0.0:$PORT \
+    --timeout 600 \
+    --workers 1 \
+    --threads 2 \
+    --worker-class sync \
+    --max-requests 100 \
+    --max-requests-jitter 10 \
+    --graceful-timeout 300
